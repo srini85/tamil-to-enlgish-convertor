@@ -81,18 +81,29 @@ class TamilPDFProcessor:
                 use_enhanced_ocr=config.enhanced_ocr_enabled
             )
             
-            # Content processing and translation
-            final_content = self.content_processor.format_pages_content(
-                extracted_pages, translator, translate
+            # First, save the OCR Tamil text (always save this)
+            tamil_content = self.content_processor.format_pages_content(
+                extracted_pages, translator=None, translate=False
             )
+            tamil_output_path = self.file_handler.generate_output_filename(pdf_path, translated=False)
+            self.file_handler.save_text_file(tamil_output_path, tamil_content)
+            print(f"✓ Tamil OCR text saved to: {tamil_output_path}")
             
-            # Save output
-            self.file_handler.save_text_file(output_path, final_content)
-            
-            # Display results
-            self._display_results(output_path, final_content, translate, start_page or 1)
-            
-            return output_path
+            # Then, if translation is enabled, translate and save English version
+            if translate and translator:
+                final_content = self.content_processor.format_pages_content(
+                    extracted_pages, translator, translate=True
+                )
+                # Save translated content
+                self.file_handler.save_text_file(output_path, final_content)
+                
+                # Display results for translated version
+                self._display_results(output_path, final_content, translate, start_page or 1)
+                return output_path
+            else:
+                # Display results for Tamil version only
+                self._display_results(tamil_output_path, tamil_content, translate, start_page or 1)
+                return tamil_output_path
             
         except (OCRError, TranslationError) as e:
             print(f"\n✗ Processing failed: {e}")
@@ -263,7 +274,11 @@ def main():
         print(f"\n🎉 Processing completed successfully!")
         if args.translate:
             translation_type = "Local" if args.local else ("Gemini" if args.gemini else "Google Cloud")
-            print(f"📖 Tamil PDF → English translation ({translation_type}) saved to: {result}")
+            # Generate Tamil filename for display
+            base_name = os.path.splitext(args.pdf_file)[0]
+            tamil_file = f"{base_name}_tamil_unicode.txt"
+            print(f"📝 Tamil OCR text saved to: {tamil_file}")
+            print(f"📖 English translation ({translation_type}) saved to: {result}")
         else:
             print(f"📝 Tamil Unicode text saved to: {result}")
             

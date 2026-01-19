@@ -54,6 +54,7 @@ Please provide only the English translation without any additional commentary or
         if config.verbose_logging:
             print(f"🔧 Gemini Configuration:")
             print(f"   Model: {self.model_name}")
+            print(f"   Translation mode: {config.gemini_translation_mode}")
             print(f"   Request delay: {config.gemini_delay_between_requests}s")
             print(f"   Chunk delay: {config.gemini_delay_between_chunks}s")
             print(f"   Max chunk size: {config.max_chunk_size}")
@@ -110,6 +111,92 @@ Please provide only the English translation without any additional commentary or
                 raise GeminiTranslationError("Gemini API test returned empty response")
         except Exception as e:
             raise GeminiTranslationError(f"Gemini API connection failed: {e}")
+
+    def translate_document(self, text: str, document_title: str = "Tamil Document") -> str:
+        """
+        Translate an entire Tamil document to English in one request for better context.
+        
+        This method sends the entire document to Gemini at once, providing maximum
+        context for more coherent and accurate translation. Best for documents 
+        under 100K characters.
+        
+        Args:
+            text: Complete Tamil text to translate
+            document_title: Optional title for better context
+            
+        Returns:
+            Complete translated English text
+            
+        Raises:
+            GeminiTranslationError: If translation fails
+        """
+        if not text.strip():
+            return ""
+        
+        try:
+            # Rate limiting before request
+            rate_limiter.wait_if_needed('gemini', 'request')
+            rate_limiter.log_request('gemini')
+            
+            # Enhanced prompt for full document translation
+            prompt = f"""Please translate this complete Tamil document to English. 
+            
+Document Title: {document_title}
+            
+Instructions:
+            - Maintain the narrative flow and coherence throughout
+            - Preserve the original structure and paragraphing
+            - Keep proper nouns and character names unchanged
+            - Ensure consistent terminology throughout the document
+            - Maintain the tone and style of the original text
+            
+Tamil Text to Translate:
+            
+{text}"""
+            
+            print(f"🔄 Translating complete document with Gemini ({len(text)} characters)...")
+            
+            # Calculate appropriate max tokens based on input size
+            # Estimate: Tamil to English usually expands by 1.2-1.5x in character count
+            # 1 token ≈ 3-4 characters, so we need generous token allowance
+            estimated_output_tokens = min(
+                config.translation_document_max_output_tokens,
+                max(8000, int(len(text) * 1.5 / 3))  # Generous estimate
+            )
+            
+            if config.verbose_logging:
+                print(f"   📊 Input: {len(text)} chars, Estimated tokens needed: {estimated_output_tokens}")
+            
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_instruction,
+                    temperature=config.translation_temperature,
+                    max_output_tokens=estimated_output_tokens
+                )
+            )
+            
+            if response and response.text:
+                translated_text = response.text.strip()
+                
+                # Check for potential truncation by comparing input/output ratio
+                input_chars = len(text)
+                output_chars = len(translated_text)
+                expected_min_output = input_chars * 0.7  # Tamil to English usually similar length
+                
+                if output_chars < expected_min_output:
+                    print(f"⚠️  Warning: Translation may be incomplete!")
+                    print(f"   📊 Input: {input_chars} chars → Output: {output_chars} chars")
+                    print(f"   💡 Consider splitting document or increasing TRANSLATION_DOCUMENT_MAX_OUTPUT_TOKENS")
+                
+                print(f"✓ Document translation completed ({output_chars} characters)")
+                return translated_text
+            else:
+                raise Exception("Empty response from Gemini")
+                
+        except Exception as e:
+            raise GeminiTranslationError(f"Full document translation failed: {e}")
 
     def translate_text(self, text: str, chunk_size: int = None) -> str:
         """
@@ -186,6 +273,10 @@ Please provide only the English translation without any additional commentary or
         except Exception as e:
             raise GeminiTranslationError(f"Translation failed: {e}")
     
+    def has_full_document_support(self) -> bool:
+        """Check if full document translation is enabled."""
+        return config.gemini_translation_mode == 'document'
+
     def _split_text(self, text: str, max_chunk_size: int = None) -> List[str]:
         """Split text into chunks while preserving paragraph boundaries."""
         max_chunk_size = max_chunk_size or config.max_chunk_size

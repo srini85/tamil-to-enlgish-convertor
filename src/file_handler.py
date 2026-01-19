@@ -53,21 +53,44 @@ class ContentProcessor:
         """
         content_parts = []
         
+        # Collect all text first
         for page_num, text in pages_data:
-            if translate and translator:
-                print(f"Translating page {page_num}...")
-                try:
-                    translated_text = translator.translate_text(text)
-                    content_parts.append(translated_text)
-                except Exception as e:
-                    print(f"Translation failed for page {page_num}: {e}")
-                    content_parts.append(f"[Translation Error for page {page_num}]\n{text}")
-            else:
-                content_parts.append(text)
+            content_parts.append(text)
         
         # Join content with double line breaks to maintain readability
-        # but without page headers
-        return '\n\n'.join(content_parts)
+        full_tamil_text = '\n\n'.join(content_parts)
+        
+        if translate and translator:
+            try:
+                # Check if translator is Gemini and supports full document translation
+                from src.gemini_translation import GeminiTranslator
+                if (isinstance(translator, GeminiTranslator) and 
+                    hasattr(translator, 'has_full_document_support') and
+                    translator.has_full_document_support()):
+                    
+                    print(f"🔄 Translating complete document with Gemini ({len(full_tamil_text)} characters)...")
+                    translated_text = translator.translate_document(full_tamil_text, "Tamil Document")
+                    return translated_text
+                else:
+                    # Fall back to page-by-page translation for other translators
+                    translated_parts = []
+                    for page_num, text in pages_data:
+                        print(f"Translating page {page_num}...")
+                        try:
+                            translated_text = translator.translate_text(text)
+                            translated_parts.append(translated_text)
+                        except Exception as e:
+                            print(f"Translation failed for page {page_num}: {e}")
+                            translated_parts.append(f"[Translation Error for page {page_num}]\n{text}")
+                    
+                    return '\n\n'.join(translated_parts)
+                    
+            except Exception as e:
+                print(f"Translation failed: {e}")
+                print("Returning original Tamil text...")
+                return full_tamil_text
+        else:
+            return full_tamil_text
     
     @staticmethod
     def extract_sample_content(content: str, page_offset: int = 0, max_lines: int = 8) -> List[str]:

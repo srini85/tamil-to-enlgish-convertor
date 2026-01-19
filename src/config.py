@@ -104,6 +104,10 @@ class Config:
     def ocr_mode(self) -> str:
         return os.getenv('OCR_MODE', 'balanced').lower()
     
+    @property
+    def gemini_translation_mode(self) -> str:
+        return os.getenv('GEMINI_TRANSLATION_MODE', 'document').lower()
+    
     # =============================================================================
     # TRANSLATION SETTINGS
     # =============================================================================
@@ -119,6 +123,10 @@ class Config:
     @property
     def translation_max_output_tokens(self) -> int:
         return int(os.getenv('TRANSLATION_MAX_OUTPUT_TOKENS', '4096'))
+    
+    @property
+    def translation_document_max_output_tokens(self) -> int:
+        return int(os.getenv('TRANSLATION_DOCUMENT_MAX_OUTPUT_TOKENS', '30000'))
     
     # =============================================================================
     # LOGGING & DEBUG
